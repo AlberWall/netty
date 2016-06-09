@@ -42,6 +42,7 @@ import io.netty.util.concurrent.ImmediateExecutor;
 import io.netty.util.concurrent.Promise;
 import io.netty.util.internal.EmptyArrays;
 import io.netty.util.internal.PlatformDependent;
+import io.netty.util.internal.ThrowableUtil;
 import io.netty.util.internal.logging.InternalLogger;
 import io.netty.util.internal.logging.InternalLoggerFactory;
 
@@ -182,9 +183,9 @@ public class SslHandler extends ByteToMessageDecoder implements ChannelOutboundH
     private static final ClosedChannelException CHANNEL_CLOSED = new ClosedChannelException();
 
     static {
-        SSLENGINE_CLOSED.setStackTrace(EmptyArrays.EMPTY_STACK_TRACE);
-        HANDSHAKE_TIMED_OUT.setStackTrace(EmptyArrays.EMPTY_STACK_TRACE);
-        CHANNEL_CLOSED.setStackTrace(EmptyArrays.EMPTY_STACK_TRACE);
+        ThrowableUtil.setUnknownStackTrace(SSLENGINE_CLOSED, SslHandler.class, "wrap(...)");
+        ThrowableUtil.setUnknownStackTrace(HANDSHAKE_TIMED_OUT, SslHandler.class, "handshake(...)");
+        ThrowableUtil.setUnknownStackTrace(CHANNEL_CLOSED, SslHandler.class, "channelInactive(...)");
     }
 
     private volatile ChannelHandlerContext ctx;

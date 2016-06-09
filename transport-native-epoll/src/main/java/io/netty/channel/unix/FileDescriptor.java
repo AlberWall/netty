@@ -16,15 +16,14 @@
 package io.netty.channel.unix;
 
 import io.netty.util.internal.PlatformDependent;
+import io.netty.util.internal.ThrowableUtil;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.channels.ClosedChannelException;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 
-import static io.netty.channel.unix.Errors.CONNECTION_RESET_EXCEPTION_READ;
-import static io.netty.channel.unix.Errors.CONNECTION_RESET_EXCEPTION_WRITE;
-import static io.netty.channel.unix.Errors.CONNECTION_RESET_EXCEPTION_WRITEV;
 import static io.netty.channel.unix.Errors.ioResult;
 import static io.netty.channel.unix.Errors.newIOException;
 import static io.netty.util.internal.ObjectUtil.checkNotNull;
@@ -34,6 +33,54 @@ import static io.netty.util.internal.ObjectUtil.checkNotNull;
  * {@link FileDescriptor} for it.
  */
 public class FileDescriptor {
+    private static final ClosedChannelException WRITE_CLOSED_CHANNEL_EXCEPTION = new ClosedChannelException();
+    private static final ClosedChannelException WRITE_ADDRESS_CLOSED_CHANNEL_EXCEPTION = new ClosedChannelException();
+    private static final ClosedChannelException WRITEV_CLOSED_CHANNEL_EXCEPTION = new ClosedChannelException();
+    private static final ClosedChannelException WRITEV_ADDRESSES_CLOSED_CHANNEL_EXCEPTION =
+            new ClosedChannelException();
+    private static final ClosedChannelException READ_CLOSED_CHANNEL_EXCEPTION = new ClosedChannelException();
+    private static final ClosedChannelException READ_ADDRESS_CLOSED_CHANNEL_EXCEPTION = new ClosedChannelException();
+    private static final Errors.NativeIoException WRITE_CONNECTION_RESET_EXCEPTION;
+    private static final Errors.NativeIoException WRITE_ADDRESS_CONNECTION_RESET_EXCEPTION;
+    private static final Errors.NativeIoException WRITEV_CONNECTION_RESET_EXCEPTION;
+    private static final Errors.NativeIoException WRITEV_ADDRESSES_CONNECTION_RESET_EXCEPTION;
+    private static final Errors.NativeIoException READ_CONNECTION_RESET_EXCEPTION;
+    private static final Errors.NativeIoException READ_ADDRESS_CONNECTION_RESET_EXCEPTION;
+
+    static {
+        ThrowableUtil.setUnknownStackTrace(WRITE_CLOSED_CHANNEL_EXCEPTION, FileDescriptor.class, "write(...)");
+        ThrowableUtil.setUnknownStackTrace(WRITE_ADDRESS_CLOSED_CHANNEL_EXCEPTION,
+                FileDescriptor.class, "writeAddress(...)");
+        ThrowableUtil.setUnknownStackTrace(WRITEV_CLOSED_CHANNEL_EXCEPTION, FileDescriptor.class, "writev(...)");
+        ThrowableUtil.setUnknownStackTrace(WRITEV_ADDRESSES_CLOSED_CHANNEL_EXCEPTION,
+                FileDescriptor.class, "writevAddresses(...)");
+        ThrowableUtil.setUnknownStackTrace(READ_CLOSED_CHANNEL_EXCEPTION, FileDescriptor.class, "read(...)");
+        ThrowableUtil.setUnknownStackTrace(READ_ADDRESS_CLOSED_CHANNEL_EXCEPTION,
+                FileDescriptor.class, "readAddress(...)");
+
+        WRITE_CONNECTION_RESET_EXCEPTION = Errors.newConnectionResetException("syscall:write(...)",
+                Errors.ERRNO_EPIPE_NEGATIVE);
+        ThrowableUtil.setUnknownStackTrace(WRITE_CONNECTION_RESET_EXCEPTION, FileDescriptor.class, "write(...)");
+        WRITEV_CONNECTION_RESET_EXCEPTION = Errors.newConnectionResetException("syscall:writev(...)",
+                Errors.ERRNO_EPIPE_NEGATIVE);
+        ThrowableUtil.setUnknownStackTrace(WRITEV_CONNECTION_RESET_EXCEPTION, FileDescriptor.class, "writev(...)");
+        WRITE_ADDRESS_CONNECTION_RESET_EXCEPTION = Errors.newConnectionResetException("syscall:write(...)",
+                Errors.ERRNO_EPIPE_NEGATIVE);
+        ThrowableUtil.setUnknownStackTrace(WRITE_ADDRESS_CONNECTION_RESET_EXCEPTION,
+                FileDescriptor.class, "writeAddress(...)");
+        WRITEV_ADDRESSES_CONNECTION_RESET_EXCEPTION = Errors.newConnectionResetException("syscall:writev(...)",
+                Errors.ERRNO_EPIPE_NEGATIVE);
+        ThrowableUtil.setUnknownStackTrace(WRITEV_ADDRESSES_CONNECTION_RESET_EXCEPTION,
+                FileDescriptor.class, "writeAddresses(...)");
+        READ_CONNECTION_RESET_EXCEPTION = Errors.newConnectionResetException("syscall:read(...)",
+                Errors.ERRNO_ECONNRESET_NEGATIVE);
+        ThrowableUtil.setUnknownStackTrace(READ_CONNECTION_RESET_EXCEPTION, FileDescriptor.class, "read(...)");
+        READ_ADDRESS_CONNECTION_RESET_EXCEPTION = Errors.newConnectionResetException("syscall:read(...)",
+                Errors.ERRNO_ECONNRESET_NEGATIVE);
+        ThrowableUtil.setUnknownStackTrace(READ_ADDRESS_CONNECTION_RESET_EXCEPTION,
+                FileDescriptor.class, "readAddress(...)");
+    }
+
     private static final AtomicIntegerFieldUpdater<FileDescriptor> stateUpdater;
     static {
         AtomicIntegerFieldUpdater<FileDescriptor> updater
@@ -101,7 +148,7 @@ public class FileDescriptor {
         if (res >= 0) {
             return res;
         }
-        return ioResult("write", res, CONNECTION_RESET_EXCEPTION_WRITE);
+        return ioResult("write", res, WRITE_CONNECTION_RESET_EXCEPTION, WRITE_CLOSED_CHANNEL_EXCEPTION);
     }
 
     public final int writeAddress(long address, int pos, int limit) throws IOException {
@@ -109,7 +156,8 @@ public class FileDescriptor {
         if (res >= 0) {
             return res;
         }
-        return ioResult("writeAddress", res, CONNECTION_RESET_EXCEPTION_WRITE);
+        return ioResult("writeAddress", res,
+                WRITE_ADDRESS_CONNECTION_RESET_EXCEPTION, WRITE_ADDRESS_CLOSED_CHANNEL_EXCEPTION);
     }
 
     public final long writev(ByteBuffer[] buffers, int offset, int length) throws IOException {
@@ -117,7 +165,7 @@ public class FileDescriptor {
         if (res >= 0) {
             return res;
         }
-        return ioResult("writev", (int) res, CONNECTION_RESET_EXCEPTION_WRITEV);
+        return ioResult("writev", (int) res, WRITEV_CONNECTION_RESET_EXCEPTION, WRITEV_CLOSED_CHANNEL_EXCEPTION);
     }
 
     public final long writevAddresses(long memoryAddress, int length) throws IOException {
@@ -125,7 +173,8 @@ public class FileDescriptor {
         if (res >= 0) {
             return res;
         }
-        return ioResult("writevAddresses", (int) res, CONNECTION_RESET_EXCEPTION_WRITEV);
+        return ioResult("writevAddresses", (int) res,
+                WRITEV_ADDRESSES_CONNECTION_RESET_EXCEPTION, WRITEV_ADDRESSES_CLOSED_CHANNEL_EXCEPTION);
     }
 
     public final int read(ByteBuffer buf, int pos, int limit) throws IOException {
@@ -136,7 +185,7 @@ public class FileDescriptor {
         if (res == 0) {
             return -1;
         }
-        return ioResult("read", res, CONNECTION_RESET_EXCEPTION_READ);
+        return ioResult("read", res, READ_CONNECTION_RESET_EXCEPTION, READ_CLOSED_CHANNEL_EXCEPTION);
     }
 
     public final int readAddress(long address, int pos, int limit) throws IOException {
@@ -147,7 +196,8 @@ public class FileDescriptor {
         if (res == 0) {
             return -1;
         }
-        return ioResult("readAddress", res, CONNECTION_RESET_EXCEPTION_READ);
+        return ioResult("readAddress", res,
+                READ_ADDRESS_CONNECTION_RESET_EXCEPTION, READ_ADDRESS_CLOSED_CHANNEL_EXCEPTION);
     }
 
     @Override

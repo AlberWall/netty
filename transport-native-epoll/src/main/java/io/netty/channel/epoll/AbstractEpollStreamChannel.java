@@ -32,9 +32,9 @@ import io.netty.channel.RecvByteBufAllocator;
 import io.netty.channel.socket.DuplexChannel;
 import io.netty.channel.unix.FileDescriptor;
 import io.netty.channel.unix.Socket;
-import io.netty.util.internal.EmptyArrays;
 import io.netty.util.internal.PlatformDependent;
 import io.netty.util.internal.StringUtil;
+import io.netty.util.internal.ThrowableUtil;
 import io.netty.util.internal.logging.InternalLogger;
 import io.netty.util.internal.logging.InternalLoggerFactory;
 
@@ -56,10 +56,21 @@ public abstract class AbstractEpollStreamChannel extends AbstractEpollChannel im
             " (expected: " + StringUtil.simpleClassName(ByteBuf.class) + ", " +
                     StringUtil.simpleClassName(DefaultFileRegion.class) + ')';
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(AbstractEpollStreamChannel.class);
-    static final ClosedChannelException CLOSED_CHANNEL_EXCEPTION = new ClosedChannelException();
-
+    private static final ClosedChannelException DO_CLOSE_CLOSED_CHANNEL_EXCEPTION = new ClosedChannelException();
+    private static final ClosedChannelException CLEAR_SPLICE_QUEUE_CLOSED_CHANNEL_EXCEPTION =
+            new ClosedChannelException();
+    private static final ClosedChannelException SPLICE_TO_CLOSED_CHANNEL_EXCEPTION = new ClosedChannelException();
+    private static final ClosedChannelException FAIL_SPLICE_IF_CLOSED_CLOSED_CHANNEL_EXCEPTION =
+            new ClosedChannelException();
     static {
-        CLOSED_CHANNEL_EXCEPTION.setStackTrace(EmptyArrays.EMPTY_STACK_TRACE);
+        ThrowableUtil.setUnknownStackTrace(DO_CLOSE_CLOSED_CHANNEL_EXCEPTION,
+                AbstractEpollStreamChannel.class, "doClose()");
+        ThrowableUtil.setUnknownStackTrace(CLEAR_SPLICE_QUEUE_CLOSED_CHANNEL_EXCEPTION,
+                AbstractEpollStreamChannel.class, "clearSpliceQueue()");
+        ThrowableUtil.setUnknownStackTrace(SPLICE_TO_CLOSED_CHANNEL_EXCEPTION,
+                AbstractEpollStreamChannel.class, "spliceTo(...)");
+        ThrowableUtil.setUnknownStackTrace(FAIL_SPLICE_IF_CLOSED_CLOSED_CHANNEL_EXCEPTION,
+                AbstractEpollStreamChannel.class, "failSpliceIfClosed(...)");
     }
 
     /**
@@ -170,7 +181,7 @@ public abstract class AbstractEpollStreamChannel extends AbstractEpollChannel im
         }
         checkNotNull(promise, "promise");
         if (!isOpen()) {
-            promise.tryFailure(CLOSED_CHANNEL_EXCEPTION);
+            promise.tryFailure(SPLICE_TO_CLOSED_CHANNEL_EXCEPTION);
         } else {
             addToSpliceQueue(new SpliceInChannelTask(ch, len, promise));
             failSpliceIfClosed(promise);
@@ -223,7 +234,7 @@ public abstract class AbstractEpollStreamChannel extends AbstractEpollChannel im
         }
         checkNotNull(promise, "promise");
         if (!isOpen()) {
-            promise.tryFailure(CLOSED_CHANNEL_EXCEPTION);
+            promise.tryFailure(SPLICE_TO_CLOSED_CHANNEL_EXCEPTION);
         } else {
             addToSpliceQueue(new SpliceFdTask(ch, offset, len, promise));
             failSpliceIfClosed(promise);
@@ -235,7 +246,7 @@ public abstract class AbstractEpollStreamChannel extends AbstractEpollChannel im
         if (!isOpen()) {
             // Seems like the Channel was closed in the meantime try to fail the promise to prevent any
             // cases where a future may not be notified otherwise.
-            if (promise.tryFailure(CLOSED_CHANNEL_EXCEPTION)) {
+            if (promise.tryFailure(FAIL_SPLICE_IF_CLOSED_CLOSED_CHANNEL_EXCEPTION)) {
                 eventLoop().execute(new Runnable() {
                     @Override
                     public void run() {
@@ -669,7 +680,7 @@ public abstract class AbstractEpollStreamChannel extends AbstractEpollChannel im
             ChannelPromise promise = connectPromise;
             if (promise != null) {
                 // Use tryFailure() instead of setFailure() to avoid the race against cancel().
-                promise.tryFailure(CLOSED_CHANNEL_EXCEPTION);
+                promise.tryFailure(DO_CLOSE_CLOSED_CHANNEL_EXCEPTION);
                 connectPromise = null;
             }
 
@@ -696,7 +707,7 @@ public abstract class AbstractEpollStreamChannel extends AbstractEpollChannel im
             if (task == null) {
                 break;
             }
-            task.promise.tryFailure(CLOSED_CHANNEL_EXCEPTION);
+            task.promise.tryFailure(CLEAR_SPLICE_QUEUE_CLOSED_CHANNEL_EXCEPTION);
         }
     }
 

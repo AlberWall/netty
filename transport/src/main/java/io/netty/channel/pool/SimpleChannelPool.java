@@ -25,8 +25,8 @@ import io.netty.util.AttributeKey;
 import io.netty.util.concurrent.Future;
 import io.netty.util.concurrent.FutureListener;
 import io.netty.util.concurrent.Promise;
-import io.netty.util.internal.EmptyArrays;
 import io.netty.util.internal.PlatformDependent;
+import io.netty.util.internal.ThrowableUtil;
 
 import java.util.Deque;
 
@@ -45,8 +45,9 @@ public class SimpleChannelPool implements ChannelPool {
     private static final IllegalStateException UNHEALTHY_NON_OFFERED_TO_POOL =
             new IllegalStateException("Channel is unhealthy not offering it back to pool");
     static {
-        FULL_EXCEPTION.setStackTrace(EmptyArrays.EMPTY_STACK_TRACE);
-        UNHEALTHY_NON_OFFERED_TO_POOL.setStackTrace(EmptyArrays.EMPTY_STACK_TRACE);
+        ThrowableUtil.setUnknownStackTrace(FULL_EXCEPTION, SimpleChannelPool.class, "releaseAndOffer(...)");
+        ThrowableUtil.setUnknownStackTrace(UNHEALTHY_NON_OFFERED_TO_POOL,
+                SimpleChannelPool.class, "releaseAndOffer(...)");
     }
     private final Deque<Channel> deque = PlatformDependent.newConcurrentDeque();
     private final ChannelPoolHandler handler;

@@ -28,7 +28,7 @@ import io.netty.channel.EventLoop;
 import io.netty.channel.RecvByteBufAllocator;
 import io.netty.util.ReferenceCountUtil;
 import io.netty.util.concurrent.EventExecutor;
-import io.netty.util.internal.EmptyArrays;
+import io.netty.util.internal.ThrowableUtil;
 
 import java.net.SocketAddress;
 import java.nio.channels.ClosedChannelException;
@@ -54,7 +54,7 @@ abstract class AbstractHttp2StreamChannel extends AbstractChannel {
     private static final int ARBITRARY_MESSAGE_SIZE = 9;
 
     static {
-        CLOSED_CHANNEL_EXCEPTION.setStackTrace(EmptyArrays.EMPTY_STACK_TRACE);
+        ThrowableUtil.setUnknownStackTrace(CLOSED_CHANNEL_EXCEPTION, AbstractHttp2StreamChannel.class, "doWrite(...)");
     }
 
     private final ChannelConfig config = new DefaultChannelConfig(this);

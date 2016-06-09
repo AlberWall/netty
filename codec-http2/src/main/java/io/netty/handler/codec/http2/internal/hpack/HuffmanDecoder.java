@@ -31,7 +31,7 @@
  */
 package io.netty.handler.codec.http2.internal.hpack;
 
-import io.netty.util.internal.EmptyArrays;
+import io.netty.util.internal.ThrowableUtil;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -42,8 +42,8 @@ final class HuffmanDecoder {
     private static final IOException INVALID_PADDING = new IOException("HPACK - Invalid Padding");
 
     static {
-        EOS_DECODED.setStackTrace(EmptyArrays.EMPTY_STACK_TRACE);
-        INVALID_PADDING.setStackTrace(EmptyArrays.EMPTY_STACK_TRACE);
+        ThrowableUtil.setUnknownStackTrace(EOS_DECODED, HuffmanDecoder.class, "decode(...)");
+        ThrowableUtil.setUnknownStackTrace(INVALID_PADDING, HuffmanDecoder.class, "decode(...)");
     }
 
     private final Node root;

@@ -16,10 +16,10 @@
 package io.netty.util.concurrent;
 
 import io.netty.util.Signal;
-import io.netty.util.internal.EmptyArrays;
 import io.netty.util.internal.InternalThreadLocalMap;
 import io.netty.util.internal.PlatformDependent;
 import io.netty.util.internal.StringUtil;
+import io.netty.util.internal.ThrowableUtil;
 import io.netty.util.internal.logging.InternalLogger;
 import io.netty.util.internal.logging.InternalLoggerFactory;
 
@@ -47,7 +47,7 @@ public class DefaultPromise<V> extends AbstractFuture<V> implements Promise<V> {
                 PlatformDependent.newAtomicReferenceFieldUpdater(DefaultPromise.class, "result");
         RESULT_UPDATER = updater == null ? AtomicReferenceFieldUpdater.newUpdater(DefaultPromise.class,
                                                                                   Object.class, "result") : updater;
-        CANCELLATION_CAUSE_HOLDER.cause.setStackTrace(EmptyArrays.EMPTY_STACK_TRACE);
+        ThrowableUtil.setUnknownStackTrace(CANCELLATION_CAUSE_HOLDER.cause, DefaultPromise.class, "cancel(...)");
     }
 
     private volatile Object result;
