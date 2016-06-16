@@ -27,6 +27,8 @@ import io.netty.util.internal.logging.InternalLoggerFactory;
 import org.apache.tomcat.jni.Buffer;
 import org.apache.tomcat.jni.SSL;
 
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
 import java.nio.ReadOnlyBufferException;
 import java.security.Principal;
@@ -78,6 +80,9 @@ public final class OpenSslEngine extends SSLEngine {
     private static final SSLException ENGINE_CLOSED = new SSLException("engine closed");
     private static final SSLException RENEGOTIATION_UNSUPPORTED = new SSLException("renegotiation unsupported");
     private static final SSLException ENCRYPTED_PACKET_OVERSIZED = new SSLException("encrypted packet oversized");
+    private static final Method GET_USE_CIPHER_SUITES_ORDER_METHOD;
+    private static final Method SET_USE_CIPHER_SUITES_ORDER_METHOD;
+
     static {
         ENGINE_CLOSED.setStackTrace(EmptyArrays.EMPTY_STACK_TRACE);
         RENEGOTIATION_UNSUPPORTED.setStackTrace(EmptyArrays.EMPTY_STACK_TRACE);
@@ -89,6 +94,25 @@ public final class OpenSslEngine extends SSLEngine {
             destroyedUpdater = AtomicIntegerFieldUpdater.newUpdater(OpenSslEngine.class, "destroyed");
         }
         DESTROYED_UPDATER = destroyedUpdater;
+
+        Method getUseCipherSuitesOrderMethod = null;
+        Method setUseCipherSuitesOrderMethod = null;
+        if (PlatformDependent.javaVersion() >= 8) {
+            try {
+                getUseCipherSuitesOrderMethod = SSLParameters.class.getDeclaredMethod("getUseCipherSuitesOrder");
+                SSLParameters parameters = new SSLParameters();
+                @SuppressWarnings("unused")
+                Boolean order = (Boolean) getUseCipherSuitesOrderMethod.invoke(parameters);
+                setUseCipherSuitesOrderMethod = SSLParameters.class.getDeclaredMethod("setUseCipherSuitesOrder",
+                        boolean.class);
+                setUseCipherSuitesOrderMethod.invoke(parameters, true);
+            } catch (Throwable ignore) {
+                getUseCipherSuitesOrderMethod = null;
+                setUseCipherSuitesOrderMethod = null;
+            }
+        }
+        GET_USE_CIPHER_SUITES_ORDER_METHOD = getUseCipherSuitesOrderMethod;
+        SET_USE_CIPHER_SUITES_ORDER_METHOD = setUseCipherSuitesOrderMethod;
     }
 
     private static final int MAX_PLAINTEXT_LENGTH = 16 * 1024; // 2^14
@@ -160,9 +184,9 @@ public final class OpenSslEngine extends SSLEngine {
 
     private volatile ClientAuth clientAuth = ClientAuth.NONE;
 
-    private volatile String endPointIdentificationAlgorithm;
+    private String endPointIdentificationAlgorithm;
     // Store as object as AlgorithmConstraints only exists since java 7.
-    private volatile Object algorithmConstraints;
+    private Object algorithmConstraints;
 
     // SSL Engine status variables
     private boolean isInboundDone;
@@ -1393,23 +1417,48 @@ public final class OpenSslEngine extends SSLEngine {
     }
 
     @Override
-    public SSLParameters getSSLParameters() {
+    public synchronized SSLParameters getSSLParameters() {
         SSLParameters sslParameters = super.getSSLParameters();
 
-        if (PlatformDependent.javaVersion() >= 7) {
+        int version = PlatformDependent.javaVersion();
+        if (version >= 7) {
             sslParameters.setEndpointIdentificationAlgorithm(endPointIdentificationAlgorithm);
             SslParametersUtils.setAlgorithmConstraints(sslParameters, algorithmConstraints);
+            if (version >= 8 && SET_USE_CIPHER_SUITES_ORDER_METHOD != null && !isDestroyed()) {
+                try {
+                    SET_USE_CIPHER_SUITES_ORDER_METHOD.invoke(sslParameters,
+                            (SSL.getOptions(ssl) & SSL.SSL_OP_CIPHER_SERVER_PREFERENCE) != 0);
+                } catch (IllegalAccessException e) {
+                    throw new Error(e);
+                } catch (InvocationTargetException e) {
+                    throw new Error(e);
+                }
+            }
         }
         return sslParameters;
     }
 
     @Override
-    public void setSSLParameters(SSLParameters sslParameters) {
+    public synchronized void setSSLParameters(SSLParameters sslParameters) {
         super.setSSLParameters(sslParameters);
 
-        if (PlatformDependent.javaVersion() >= 7) {
+        int version = PlatformDependent.javaVersion();
+        if (version >= 7) {
             endPointIdentificationAlgorithm = sslParameters.getEndpointIdentificationAlgorithm();
             algorithmConstraints = sslParameters.getAlgorithmConstraints();
+            if (version >= 8 && GET_USE_CIPHER_SUITES_ORDER_METHOD != null && !isDestroyed()) {
+                try {
+                    if (((Boolean) GET_USE_CIPHER_SUITES_ORDER_METHOD.invoke(sslParameters))) {
+                        SSL.setOptions(ssl, SSL.SSL_OP_CIPHER_SERVER_PREFERENCE);
+                    } else {
+                        SSL.clearOptions(ssl, SSL.SSL_OP_CIPHER_SERVER_PREFERENCE);
+                    }
+                } catch (IllegalAccessException e) {
+                    throw new Error(e);
+                } catch (InvocationTargetException e) {
+                    throw new Error(e);
+                }
+            }
         }
     }
 
